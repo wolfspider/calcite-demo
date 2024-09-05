@@ -22,6 +22,17 @@ body {
   min-height: 100vh;
 }
 
+body div.esri-ui {
+  display: none;
+  padding-left: 300px;
+  max-width: 500px;
+}
+
+body a.esri-attachments__item-button {
+  display: inline-block;
+  max-height: 50px;
+}
+
 #app > main {
   display: flex;
   padding-top: 3.5rem;
