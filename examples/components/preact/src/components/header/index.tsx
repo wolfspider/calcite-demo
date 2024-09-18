@@ -5,7 +5,7 @@ const Header = () => (
   <header class={style.header}>
     <a href="/" class={style.logo}>
       <calcite-icon icon="globe" />
-      <h1>Alachua County Map</h1>
+      <h1>Alachua County Current Projects Map</h1>
     </a>
   </header>
 );

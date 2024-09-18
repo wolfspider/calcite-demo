@@ -11,9 +11,10 @@ import Legend from "@arcgis/core/widgets/Legend";
 import Print from "@arcgis/core/widgets/Print";
 import Features from "@arcgis/core/widgets/Features";
 import Zoom from "@arcgis/core/widgets/Zoom";
+import Polygon from "@arcgis/core/geometry/Polygon";
 
 class MapComponent extends Component {
-  componentDidMount() {
+  async componentDidMount() {
     const webmapId =
       new URLSearchParams(window.location.search).get("webmap") ??
       "1742af40c5bf454d8cda029d70515a37";
@@ -92,26 +93,81 @@ class MapComponent extends Component {
     const noticeElement = document.getElementById("note");
     const cardContainer = document.querySelector(".card-container");
 
-    /* Fetch the earthquakes feature service */
-    fetch(
-      "https://gis.alachuacounty.us/arcgis/rest/services/Operational/Applications/FeatureServer/0/query?where=App_status%20%3D%20%27Under%20Review%27&outFields=*&f=json",
-    )
-      .then((response) => response.json())
-      .then(({ features }) =>
-        features.map(({ attributes, geometry }) => ({
-          ...attributes,
-          geometry, // This will add geometry as a property inside attributes
-        })),
-      )
-      .then((attributesWithGeometry) => initFilter(attributesWithGeometry));
+    const controlVisitedTypeEl = document.getElementById("control-visited-type-el") as HTMLCalciteSegmentedControlElement;
 
-    /* Filter the results to display */
-    const initFilter = (items) => {
+  
+    enum ftype {
+      UnderReview = "Under Review",
+      HearingScheduled = "Hearing Scheduled",
+      Construction = "Construction",
+      Permit = "Permit Issued",
+      Pending = "Pending"
+    }
+
+    const renderFilter = (items) => {
+      
+      console.log("number of items: ", items);
+
       filterElement.items = items;
+      
+      filterElement.filteredItems.forEach((item) => createCard(item));
+      paginationElement.totalItems = filterElement.filteredItems.length;
+
+      showNumberOfResponses(filterElement.filteredItems.length);
+
+      // If additional pages are populated, display Pagination
+      if (paginationElement.totalItems > paginationElement.pageSize) {
+        paginationElement.style.visibility = "visible";
+      }
+    }
+
+
+    document.addEventListener("calciteSegmentedControlChange", async () => {
+        paginationElement.startItem = 1;
+        paginationElement.totalItems = 0;
+
+        //console.log("selected item: ", controlVisitedTypeEl.selectedItem?.textContent);
+
+        const filterText = controlVisitedTypeEl.selectedItem?.textContent;
+
+        
+        if(filterText) {
+        
+          // Prevent display if no Filter value is present
+          noticeElement.removeAttribute("open");
+
+          paginationElement.style.visibility = "hidden";
+
+          cardContainer.innerHTML = "";
+
+          const items = await fetch(
+            `https://gis.alachuacounty.us/arcgis/rest/services/Operational/Applications/FeatureServer/0/query?where=App_status%20%3D%20%27${filterText}%27&outFields=*&f=json`,
+          )
+            .then((response) => response.json())
+            .then(({ features }) =>
+              features.map(({ attributes, geometry }) => ({
+                ...attributes,
+                geometry, // This will add geometry as a property inside attributes
+              })),
+            ).then((items) => renderFilter(items));
+
+        }
+
+        // When a Filter value is present
+        // Create Cards, update Pagination, and number of responses
+        //if (filterElement.value) {
+          
+        /* } else {
+          // If no text is present in the Filter, display the initial notice
+          initialNoticeElement.setAttribute("open", "");
+        } */
+      });
 
       document.addEventListener("calciteFilterChange", () => {
         paginationElement.startItem = 1;
         paginationElement.totalItems = 0;
+
+        const filterText = controlVisitedTypeEl.selectedItem?.textContent;
 
         // Prevent display if no Filter value is present
         noticeElement.removeAttribute("open");
@@ -120,24 +176,67 @@ class MapComponent extends Component {
 
         cardContainer.innerHTML = "";
 
-        // When a Filter value is present
-        // Create Cards, update Pagination, and number of responses
-        if (filterElement.value) {
-          filterElement.filteredItems.forEach((item) => createCard(item));
-          paginationElement.totalItems = filterElement.filteredItems.length;
+        const origItems = filterElement.items;
 
-          showNumberOfResponses(filterElement.filteredItems.length);
+        if(filterText) {
 
-          // If additional pages are populated, display Pagination
-          if (paginationElement.totalItems > paginationElement.pageSize) {
-            paginationElement.style.visibility = "visible";
+          // When a Filter value is present
+          // Create Cards, update Pagination, and number of responses
+          if (filterElement.value) {
+            filterElement.filteredItems.forEach((item) => createCard(item));
+            paginationElement.totalItems = filterElement.filteredItems.length;
+
+            showNumberOfResponses(filterElement.filteredItems.length);
+
+            // If additional pages are populated, display Pagination
+            if (paginationElement.totalItems > paginationElement.pageSize) {
+              paginationElement.style.visibility = "visible";
+            }
+          } else {
+
+            // If no text is present in the Filter, display the initial notice
+            //initialNoticeElement.setAttribute("open", "");
+            filterElement.items = origItems;
+            renderFilter(origItems);
           }
-        } else {
-          // If no text is present in the Filter, display the initial notice
-          initialNoticeElement.setAttribute("open", "");
+
         }
       });
-    };
+  
+      const initList = async () => {
+        try {
+          paginationElement.startItem = 1;
+          paginationElement.totalItems = 0;
+      
+          // Prevent display if no Filter value is present
+          noticeElement.removeAttribute("open");
+      
+          paginationElement.style.visibility = "hidden";
+          cardContainer.innerHTML = "";
+      
+          // Fetch data from the server and wait for the response
+          const response = await fetch(
+            `https://gis.alachuacounty.us/arcgis/rest/services/Operational/Applications/FeatureServer/0/query?where=App_status%20%3D%20%27${ftype.UnderReview}%27&outFields=*&f=json`
+          );
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch data: ${response.statusText}`);
+          }
+      
+          const { features } = await response.json();
+      
+          const items = features.map(({ attributes, geometry }) => ({
+            ...attributes,
+            geometry, // This will add geometry as a property inside attributes
+          }));
+      
+          // Render the filter once the data is ready
+          renderFilter(items);
+      
+        } catch (error) {
+          console.error("Error fetching or rendering data:", error);
+        }
+      };
 
     /* Create Cards and their content */
     const createCard = (item) => {
@@ -166,10 +265,16 @@ class MapComponent extends Component {
         cardContainer.appendChild(cardElement);
         const goToButton = document.getElementById(`goToButton-${item.OBJECTID}`);
         if (goToButton) {
+
+          const geom = new Polygon({
+            rings: item.geometry.rings,
+            spatialReference: {wkid: 102100 }
+          })
+
           goToButton.addEventListener("click", () => {
             view.goTo({
-              target: item,
-              zoom: 16, // Adjust the zoom level as needed
+              target: geom,
+              zoom: 18, // Adjust the zoom level as needed
             });
           });
         }
@@ -276,6 +381,8 @@ class MapComponent extends Component {
         .querySelector("calcite-switch")
         ?.addEventListener("calciteSwitchChange", updateDarkMode);
     });
+
+    const i = await initList();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
@@ -303,7 +410,7 @@ const Home = () => {
           <calcite-navigation-logo id="header-title" heading-level="1" slot="logo" />
         </calcite-navigation>
 
-        <calcite-shell-panel slot="panel-start" display-mode="float">
+        <calcite-shell-panel slot="panel-start" display-mode="float" widthScale="l">
           <calcite-action-bar slot="action-bar">
             <calcite-action data-action-id="search" icon="search" text="Search" />
             <calcite-action data-action-id="layers" icon="layers" text="Layers" />
@@ -314,13 +421,33 @@ const Home = () => {
             <calcite-action data-action-id="information" icon="information" text="Information" />
           </calcite-action-bar>
 
-          <calcite-panel heading="Search" height-scale="l" data-panel-id="search" hidden>
+          <calcite-panel heading="Current Projects Type" scale="l" data-panel-id="search" hidden>
+          <calcite-block heading="Filters" open>
+
+            <div slot="control">
+              <calcite-action disabled icon="reset" id="control-reset-el" text={""} />
+              <calcite-tooltip reference-element="control-reset-el" placement="bottom">
+                Reset to defaults
+              </calcite-tooltip>
+            </div>
+
+            <calcite-label>
+              Status
+              <calcite-segmented-control id="control-visited-type-el" width="full">
+                <calcite-segmented-control-item value="DESC">Hearing Scheduled</calcite-segmented-control-item>
+                <calcite-segmented-control-item value="ASC">Construction</calcite-segmented-control-item>
+                <calcite-segmented-control-item value="DESC">Permit Issued</calcite-segmented-control-item>
+                <calcite-segmented-control-item value="ASC">Under Review</calcite-segmented-control-item>
+                <calcite-segmented-control-item value="ASC">Pending</calcite-segmented-control-item>
+              </calcite-segmented-control>
+            </calcite-label>
+          </calcite-block>
+          <calcite-block collapsible  open heading="Results" id="result-block">
             <div id="search-container">
-              <calcite-filter placeholder="Try searching" />
+              <calcite-filter />
 
               <calcite-notice id="initial-note" open icon="information">
-                <div slot="title">Try searching a place of interest</div>
-                <div slot="message">Results will display when text is entered.</div>
+                <div slot="message">Results will display when filter selected.</div>
               </calcite-notice>
 
               <calcite-notice id="note">
@@ -331,7 +458,9 @@ const Home = () => {
 
               <calcite-pagination slot="footer" page-size="12" style="visibility:hidden" />
             </div>
-          </calcite-panel>
+          </calcite-block>
+        </calcite-panel>
+
           <calcite-panel heading="Layers" height-scale="l" data-panel-id="layers" hidden>
             <div id="layers-container" />
           </calcite-panel>
